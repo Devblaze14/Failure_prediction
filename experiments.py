@@ -2,44 +2,44 @@
 experiments.py
 --------------
 Runs a structured grid of experiments varying:
-  - Failure mode
+  - Degradation scenario
   - Noise level
-  - Failure severity
+  - Degradation severity
   - Detection window size
 
 For each configuration, all three detectors are evaluated and metrics
 are collected into a results table.
 
-Entry point: run_experiments() → returns pd.DataFrame of all results.
+Entry point: run_experiments() -> returns pd.DataFrame of all results.
 """
 
 import numpy as np
 import pandas as pd
 
 from simulator import generate_baseline, get_baseline_stats
-from failure_injection import inject_failure, build_ground_truth_labels
+from failure_injection import inject_degradation, build_ground_truth_labels, DEGRADATION_SCENARIOS
 from detectors import RuleBasedDetector, StatisticalDetector, MLDetector
 from prediction import sliding_window_prediction, compute_early_warning_time
 from evaluation import compute_metrics
+from sla_config import detect_sla_breach
 
 
 # ---------------------------------------------------------------------------
 # Experiment grid
 # ---------------------------------------------------------------------------
 
-FAILURE_MODES = ["memory_leak", "cpu_spike_burst", "latency_trend",
-                 "error_explosion", "combined_degradation"]
+SCENARIO_NAMES = list(DEGRADATION_SCENARIOS.keys())
 NOISE_LEVELS = [0.5, 1.0, 2.0]
 SEVERITIES = [0.5, 1.0, 2.0]
 WINDOW_SIZES = [10, 20, 40]
 
 N_STEPS = 500
 TRAIN_SPLIT = 0.4          # first 40% = baseline / training data
-FAILURE_START_FRAC = 0.5   # failure injected at 50% of timeline
+DEGRADATION_START_FRAC = 0.5   # degradation starts at 50% of timeline
 
 
 def _single_experiment(
-    failure_mode: str,
+    scenario: str,
     noise_level: float,
     severity: float,
     window_size: int,
@@ -61,10 +61,10 @@ def _single_experiment(
     n_train = int(N_STEPS * TRAIN_SPLIT)
     df_train = df_baseline.iloc[:n_train]
 
-    # 3. Inject failure into full timeline
-    start_step = int(N_STEPS * FAILURE_START_FRAC)
-    df_injected, failure_step = inject_failure(
-        df_baseline, mode=failure_mode,
+    # 3. Inject degradation into full timeline
+    start_step = int(N_STEPS * DEGRADATION_START_FRAC)
+    df_degraded, failure_step = inject_degradation(
+        df_baseline, mode=scenario,
         start_step=start_step, severity=severity,
         random_seed=random_seed,
     )
@@ -74,7 +74,10 @@ def _single_experiment(
     # 4. Ground truth labels
     y_true = build_ground_truth_labels(N_STEPS, failure_step)
 
-    # 5. Evaluate each detector
+    # 5. Detect SLA breach on the degraded data
+    sla_breach_step, _ = detect_sla_breach(df_degraded)
+
+    # 6. Evaluate each detector
     detectors = {
         "Rule-Based": RuleBasedDetector(),
         "Statistical": StatisticalDetector(window=window_size),
@@ -85,7 +88,7 @@ def _single_experiment(
     for det_name, detector in detectors.items():
         try:
             detector.fit(df_train)
-            scores = detector.predict(df_injected)
+            scores = detector.predict(df_degraded)
             y_pred, trigger_step = sliding_window_prediction(
                 scores,
                 window_size=window_size,
@@ -98,10 +101,12 @@ def _single_experiment(
                 y_scores=scores,
                 failure_step=failure_step,
                 trigger_step=trigger_step,
+                sla_breach_step=sla_breach_step,
+                degradation_start_step=start_step,
             )
             metrics.update({
                 "detector": det_name,
-                "failure_mode": failure_mode,
+                "failure_mode": scenario,
                 "noise_level": noise_level,
                 "severity": severity,
                 "window_size": window_size,
@@ -111,7 +116,7 @@ def _single_experiment(
         except Exception as exc:
             metrics = {
                 "detector": det_name,
-                "failure_mode": failure_mode,
+                "failure_mode": scenario,
                 "noise_level": noise_level,
                 "severity": severity,
                 "window_size": window_size,
@@ -134,7 +139,7 @@ def run_experiments(
 
     Parameters are lists of values to test; passing None uses the defaults.
     """
-    failure_modes = failure_modes or FAILURE_MODES
+    failure_modes = failure_modes or SCENARIO_NAMES
     noise_levels = noise_levels or NOISE_LEVELS
     severities = severities or SEVERITIES
     window_sizes = window_sizes or WINDOW_SIZES
@@ -153,7 +158,7 @@ def run_experiments(
                     done += 1
                     if verbose:
                         pct = 100 * done / total
-                        print(f"  [{pct:5.1f}%] mode={mode}, noise={noise}, "
+                        print(f"  [{pct:5.1f}%] scenario={mode}, noise={noise}, "
                               f"sev={severity}, win={window}")
 
     df_results = pd.DataFrame(all_results)

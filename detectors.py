@@ -1,17 +1,17 @@
 """
 detectors.py
 ------------
-Three families of anomaly detectors with a common interface.
+Three families of degradation detectors with a common interface.
 
 Interface contract for every detector class:
     fit(df_train)            -> self          (learn baseline)
     predict(df)              -> np.ndarray   (anomaly scores, 1 per step)
-    classify(df, threshold)  -> np.ndarray   (binary: 1=anomaly, 0=normal)
+    classify(df, threshold)  -> np.ndarray   (binary: 1=degraded, 0=normal)
 
 Detector families:
-  A) RuleBasedDetector   — static thresholds + slope detection
-  B) StatisticalDetector — rolling mean/std + Z-score
-  C) MLDetector          — Isolation Forest on multivariate metrics
+  A) RuleBasedDetector   - static thresholds + slope detection
+  B) StatisticalDetector - rolling mean/std + Z-score
+  C) MLDetector          - Isolation Forest on multivariate metrics
 """
 
 import numpy as np
@@ -29,10 +29,10 @@ METRIC_COLS = ["cpu_usage", "memory_mb", "latency_ms", "error_rate"]
 class RuleBasedDetector:
     """
     Combines two strategies:
-      1. Static threshold breach — any metric exceeds a fixed absolute limit
-      2. Slope detection         — rolling slope of each metric exceeds a rate limit
+      1. Static threshold breach - any metric exceeds a fixed absolute limit
+      2. Slope detection         - rolling slope of each metric exceeds a rate limit
 
-    Anomaly score: count of rules triggered (0–N), normalised to [0, 1].
+    Anomaly score: count of rules triggered (0-N), normalised to [0, 1].
     """
 
     DEFAULT_THRESHOLDS = {
@@ -97,7 +97,7 @@ class RuleBasedDetector:
 class StatisticalDetector:
     """
     Uses rolling statistics over the training baseline:
-      - Rolling mean ± k*std (control-chart style)
+      - Rolling mean +/- k*std (control-chart style)
       - Per-step Z-score relative to global baseline
 
     Anomaly score: mean absolute Z-score across all metrics, capped at 5.
@@ -138,12 +138,12 @@ class StatisticalDetector:
 
 
 # ---------------------------------------------------------------------------
-# C) ML Detector — Isolation Forest
+# C) ML Detector - Isolation Forest
 # ---------------------------------------------------------------------------
 
 class MLDetector:
     """
-    Multivariate anomaly detection using scikit-learn's Isolation Forest.
+    Multivariate degradation detection using scikit-learn's Isolation Forest.
 
     Scores are converted from sklearn's raw scores (negative: more anomalous)
     to [0, 1] where 1 = most anomalous.
@@ -177,7 +177,7 @@ class MLDetector:
         X = self._scaler.transform(df[METRIC_COLS].values)
         raw = self._model.score_samples(X)
 
-        # Lower score_samples → more anomalous → invert and normalise
+        # Lower score_samples -> more anomalous -> invert and normalise
         score_range = max(self._train_score_max - self._train_score_min, 1e-6)
         normalised = (self._train_score_max - raw) / score_range
         return np.clip(normalised, 0, 1)

@@ -1,4 +1,4 @@
-Detector,Failure Mode,Precision,Recall,F1,FPR,AUC-ROC,Det. Latency (steps),Early Warning (steps)
-Rule-Based,combined_degradation,0.0,0.0,0.0,0.0,0.9981,-1,
-Statistical,combined_degradation,1.0,0.96,0.9796,0.0,1.0,10,-10.0
-ML (IsoForest),combined_degradation,0.9766,1.0,0.9881,0.024,0.998,0,6.0
+Detector,Scenario,Precision,Recall,F1,FPR,AUC-ROC,Det. Latency (steps),Early Warning (steps),SLA Breach Step,SLA Lead Time,False Pre-SLA Alerts
+Rule-Based,combined_degradation,0.0,0.0,0.0,0.0,0.9981,-1,,250,,0
+Statistical,combined_degradation,1.0,0.96,0.9796,0.0,1.0,10,-10.0,250,-10.0,0
+ML (IsoForest),combined_degradation,0.9766,1.0,0.9881,0.024,0.998,0,6.0,250,6.0,6

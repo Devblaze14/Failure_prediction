@@ -1,15 +1,16 @@
 """
 simulator.py
 ------------
-Generates realistic time-series system metrics under normal (baseline) conditions.
+Generates realistic time-series service metrics under normal (baseline) operating conditions.
 
-Metrics simulated:
-  - cpu_usage      : CPU utilization in percent (0–100)
+Emulates the telemetry a production monitoring agent would collect:
+  - cpu_usage      : CPU utilization in percent (0-100)
   - memory_mb      : Memory consumption in MB
   - latency_ms     : Request response latency in milliseconds
-  - error_rate     : Count of errors per time interval
+  - error_rate     : Count of errors per collection interval
 
-All values follow stable distributions with configurable noise levels.
+All values follow stable distributions with configurable noise levels,
+representing a healthy service under typical load.
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# Default baseline parameters
+# Default baseline parameters (healthy service profile)
 # ---------------------------------------------------------------------------
 DEFAULT_BASELINE = {
     "cpu_mean": 30.0,       # %
@@ -38,12 +39,12 @@ def generate_baseline(
     random_seed: int = 42,
 ) -> pd.DataFrame:
     """
-    Simulate normal system behaviour for `n_steps` time intervals.
+    Generate normal service behaviour for `n_steps` collection intervals.
 
     Parameters
     ----------
     n_steps : int
-        Number of simulation time steps.
+        Number of collection time steps.
     interval_seconds : int
         Duration of each time step in seconds.
     baseline : dict, optional
@@ -110,7 +111,7 @@ def generate_baseline(
 def get_baseline_stats(df: pd.DataFrame) -> dict:
     """
     Compute the mean and standard deviation of each metric.
-    Used by detectors and reliability scorer for normalisation.
+    Used by detectors and health index scorer for normalisation.
     """
     stats = {}
     for col in ["cpu_usage", "memory_mb", "latency_ms", "error_rate"]:

@@ -1,7 +1,7 @@
 """
 prediction.py
 -------------
-Converts per-step anomaly scores into a failure prediction signal.
+Converts per-step anomaly scores into an SLA violation prediction signal.
 
 Strategy:
   - Maintain a sliding window of the last `window_size` anomaly scores.
@@ -9,9 +9,9 @@ Strategy:
   - Trigger early-warning when density >= `density_threshold`.
 
 Outputs:
-  - prediction_labels : binary array (1 = predicted failure, 0 = normal)
+  - prediction_labels : binary array (1 = predicted degradation, 0 = normal)
   - trigger_step      : first step where early-warning fired (-1 if never)
-  - early_warning_time: (failure_step - trigger_step) steps; > 0 means ahead of crash
+  - early_warning_time: (breach_step - trigger_step) steps; > 0 means ahead of breach
 """
 
 import numpy as np
@@ -24,7 +24,7 @@ def sliding_window_prediction(
     density_threshold: float = 0.5,
 ) -> tuple[np.ndarray, int]:
     """
-    Predict failure using sliding window anomaly density.
+    Predict SLA violation using sliding window anomaly density.
 
     Parameters
     ----------
@@ -35,7 +35,7 @@ def sliding_window_prediction(
 
     Returns
     -------
-    prediction_labels : binary np.array (1 = failure predicted at this step)
+    prediction_labels : binary np.array (1 = degradation predicted at this step)
     trigger_step      : index of first prediction trigger (-1 if none)
     """
     n = len(anomaly_scores)
@@ -61,11 +61,11 @@ def compute_early_warning_time(
     failure_step: int,
 ) -> int:
     """
-    Compute how many steps before the actual failure the predictor fired.
+    Compute how many steps before the actual SLA breach the predictor fired.
 
-    Positive value  → early warning (good).
-    Zero            → detected exactly at failure.
-    Negative value  → detected after failure (late).
+    Positive value  -> early warning (good).
+    Zero            -> detected exactly at breach.
+    Negative value  -> detected after breach (late).
     -1 as trigger_step means the predictor never fired.
     """
     if trigger_step == -1:
@@ -78,9 +78,9 @@ def detection_latency(
     failure_step: int,
 ) -> int:
     """
-    Steps between failure_step and the first positive prediction AT or AFTER failure_step.
+    Steps between breach_step and the first positive prediction AT or AFTER breach_step.
 
-    Returns -1 if the detector never fires after failure.
+    Returns -1 if the detector never fires after the breach.
     """
     for i in range(failure_step, len(prediction_labels)):
         if prediction_labels[i] == 1:

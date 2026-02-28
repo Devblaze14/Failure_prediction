@@ -1,10 +1,11 @@
 """
 evaluation.py
 -------------
-Evaluation utilities for anomaly detectors.
+Evaluation utilities for degradation detectors.
 
 Functions:
-  - compute_metrics()     : Precision, Recall, F1, FPR, Detection Latency, Early-Warning Time
+  - compute_metrics()     : Precision, Recall, F1, FPR, Detection Latency, Early-Warning Time,
+                            SLA breach metrics
   - plot_roc_curve()      : ROC curve for a single detector
   - plot_roc_comparison() : Overlay ROC curves for multiple detectors
   - plot_confusion_matrix(): Visualise TP/FP/TN/FN
@@ -32,22 +33,28 @@ def compute_metrics(
     y_scores: np.ndarray,
     failure_step: int,
     trigger_step: int,
+    sla_breach_step: int = -1,
+    degradation_start_step: int = -1,
 ) -> dict:
     """
-    Compute a complete set of evaluation metrics.
+    Compute a complete set of evaluation metrics including SLA-aware results.
 
     Parameters
     ----------
-    y_true       : Ground-truth binary labels (1=failure)
+    y_true       : Ground-truth binary labels (1=degraded)
     y_pred       : Binary predictions from classifier
     y_scores     : Continuous anomaly scores (for AUC)
-    failure_step : Actual failure index from ground truth
+    failure_step : Actual degradation breach index from ground truth
     trigger_step : First step where early-warning fired
+    sla_breach_step : First step where an SLA threshold was violated (-1 if never)
+    degradation_start_step : Step where degradation injection began (-1 if unknown)
 
     Returns
     -------
     dict with keys: precision, recall, f1, fpr, auc_roc,
-                    detection_latency, early_warning_steps
+                    detection_latency, early_warning_steps,
+                    sla_breach_step, sla_alert_lead_time,
+                    false_pre_sla_alerts, time_to_sla_breach
     """
     # Guard: avoid division-by-zero when no positives predicted
     if y_pred.sum() == 0:
@@ -83,6 +90,33 @@ def compute_metrics(
     else:
         early_warning = failure_step - trigger_step  # positive = before failure
 
+    # -----------------------------------------------------------------------
+    # SLA-aware metrics
+    # -----------------------------------------------------------------------
+
+    # SLA alert lead time: how many steps before SLA breach the alert fired
+    if sla_breach_step == -1 or trigger_step == -1:
+        sla_alert_lead_time = None
+    else:
+        sla_alert_lead_time = sla_breach_step - trigger_step
+
+    # False pre-SLA alerts: predictions that fired before the SLA breach
+    # in the baseline period (before degradation started)
+    if sla_breach_step == -1:
+        false_pre_sla = 0
+    else:
+        # Count prediction=1 steps that occur before both degradation start
+        # and the SLA breach — these are false pre-SLA warnings
+        cutoff = min(sla_breach_step, failure_step)
+        pre_region = y_pred[:cutoff]
+        false_pre_sla = int(pre_region.sum())
+
+    # Time to SLA breach from degradation start
+    if sla_breach_step == -1 or degradation_start_step == -1:
+        time_to_sla = None
+    else:
+        time_to_sla = sla_breach_step - degradation_start_step
+
     return {
         "precision": round(precision, 4),
         "recall": round(recall, 4),
@@ -91,6 +125,10 @@ def compute_metrics(
         "auc_roc": round(auc_roc, 4),
         "detection_latency_steps": latency,
         "early_warning_steps": early_warning,
+        "sla_breach_step": sla_breach_step,
+        "sla_alert_lead_time": sla_alert_lead_time,
+        "false_pre_sla_alerts": false_pre_sla,
+        "time_to_sla_breach": time_to_sla,
     }
 
 
@@ -174,9 +212,9 @@ def plot_confusion_matrix(
     """Render a labelled confusion matrix."""
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     fig, ax_ = (plt.subplots(figsize=(4, 3)) if ax is None else (ax.get_figure(), ax))
-    disp = ConfusionMatrixDisplay(cm, display_labels=["Normal", "Failure"])
+    disp = ConfusionMatrixDisplay(cm, display_labels=["Normal", "Degraded"])
     disp.plot(ax=ax_, colorbar=False, cmap="Blues")
-    ax_.set_title(f"Confusion Matrix — {detector_name}")
+    ax_.set_title(f"Confusion Matrix - {detector_name}")
 
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -194,7 +232,7 @@ def build_comparison_table(metrics_list: list[dict]) -> pd.DataFrame:
     for m in metrics_list:
         rows.append({
             "Detector": m.get("detector", "unknown"),
-            "Failure Mode": m.get("failure_mode", ""),
+            "Scenario": m.get("failure_mode", ""),
             "Precision": m.get("precision", float("nan")),
             "Recall": m.get("recall", float("nan")),
             "F1": m.get("f1", float("nan")),
@@ -202,5 +240,8 @@ def build_comparison_table(metrics_list: list[dict]) -> pd.DataFrame:
             "AUC-ROC": m.get("auc_roc", float("nan")),
             "Det. Latency (steps)": m.get("detection_latency_steps", -1),
             "Early Warning (steps)": m.get("early_warning_steps", None),
+            "SLA Breach Step": m.get("sla_breach_step", -1),
+            "SLA Lead Time": m.get("sla_alert_lead_time", None),
+            "False Pre-SLA Alerts": m.get("false_pre_sla_alerts", 0),
         })
     return pd.DataFrame(rows)

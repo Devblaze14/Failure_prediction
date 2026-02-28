@@ -1,11 +1,11 @@
 """
 reliability_score.py
 --------------------
-Computes a real-time system reliability score ranging from 0 to 100.
+Computes a real-time Service Health Index (SHI) ranging from 0 to 100.
 
 Score interpretation:
-  100 = perfectly healthy system (all metrics at baseline)
-    0 = complete failure (all metrics severely deviated)
+  100 = fully healthy service (all metrics at baseline)
+    0 = critical outage (all metrics severely deviated)
 
 Formula (weighted sum of normalised deviations):
 
@@ -13,15 +13,15 @@ Formula (weighted sum of normalised deviations):
 
     weighted_score = sum(w_i * deviation_i) for each metric i
 
-    raw_reliability = 100 * exp(-k * weighted_score)
-    reliability     = clip(raw_reliability, 0, 100)
+    raw_health = 100 * exp(-k * weighted_score)
+    health     = clip(raw_health, 0, 100)
 
 Where:
   w_i are the per-metric weights (sum = 1)
   k   is a sensitivity constant controlling how fast the score drops
 
-This gives a smooth, exponential decay relative to baseline deviations —
-easier to interpret than a linear mapping and avoids hard cliffs.
+This gives a smooth, exponential decay relative to baseline deviations,
+providing an intuitive single-number health indicator for dashboards.
 """
 
 import numpy as np
@@ -36,22 +36,22 @@ METRIC_WEIGHTS = {
     "error_rate": 0.25,
 }
 
-# Sensitivity: higher k → score drops faster with deviations
+# Sensitivity: higher k -> score drops faster with deviations
 SENSITIVITY = 0.5
 
 
-def compute_reliability_scores(
+def compute_health_index(
     df: pd.DataFrame,
     baseline_stats: dict,
     sensitivity: float = SENSITIVITY,
     weights: dict | None = None,
 ) -> np.ndarray:
     """
-    Compute per-step reliability score.
+    Compute per-step Service Health Index.
 
     Parameters
     ----------
-    df             : Full (injected) metrics DataFrame
+    df             : Full (degraded) metrics DataFrame
     baseline_stats : Dict with {"metric": {"mean": float, "std": float}}
                      from simulator.get_baseline_stats()
     sensitivity    : k constant in exp(-k * score)
@@ -76,15 +76,19 @@ def compute_reliability_scores(
     return np.clip(scores, 0.0, 100.0)
 
 
-def reliability_status(score: float) -> str:
+# Backward-compatible alias
+compute_reliability_scores = compute_health_index
+
+
+def health_status(score: float) -> str:
     """
-    Map a scalar score to a human-readable status label.
+    Map a scalar health index to a human-readable status label.
 
       >= 80 : Healthy
       >= 60 : Degraded
       >= 40 : Warning
       >= 20 : Critical
-       < 20 : Failure
+       < 20 : Outage
     """
     if score >= 80:
         return "Healthy"
@@ -95,4 +99,8 @@ def reliability_status(score: float) -> str:
     elif score >= 20:
         return "Critical"
     else:
-        return "Failure"
+        return "Outage"
+
+
+# Backward-compatible alias
+reliability_status = health_status
