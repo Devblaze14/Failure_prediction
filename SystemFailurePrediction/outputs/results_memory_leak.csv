@@ -1,0 +1,4 @@
+Detector,Failure Mode,Precision,Recall,F1,FPR,AUC-ROC,Det. Latency (steps),Early Warning (steps)
+Rule-Based,memory_leak,0.0,0.0,0.0,0.0,0.9591,-1,
+Statistical,memory_leak,0.3818,1.0,0.5526,0.3269,0.8738,0,136.0
+ML (IsoForest),memory_leak,0.3218,1.0,0.487,0.4255,0.7391,0,246.0
